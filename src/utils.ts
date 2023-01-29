@@ -179,12 +179,54 @@ export function downloadFile(
   });
 }
 
+export async function downloadFileWithRetries(
+  file: string,
+  url: string,
+  retries = 3,
+): Promise<DownloadTaskFile> {
+  let attemps = 0;
+  let lastException: Error | null = null;
+
+  async function tryFetch(): Promise<DownloadTaskFile> {
+    let data = await downloadFile(file, url).catch((e) => {
+      lastException = e;
+      return null;
+    });
+
+    if (data == null) {
+      attemps++;
+
+      if (attemps < retries) {
+        data = await tryFetch();
+      } else {
+        throw lastException;
+      }
+    }
+
+    return data;
+  }
+
+  return await tryFetch();
+}
+
 export async function downloadFileIfNotExist(
   file: string,
   url: string | undefined,
 ): Promise<DownloadTaskFile | null> {
   if (url && !fsSync.existsSync(file)) {
     return await downloadFile(file, url);
+  }
+
+  return null;
+}
+
+export async function downloadFileIfNotExistWithRetries(
+  file: string,
+  url: string | undefined,
+  retries = 3,
+): Promise<DownloadTaskFile | null> {
+  if (url && !fsSync.existsSync(file)) {
+    return await downloadFileIfNotExistWithRetries(file, url, retries);
   }
 
   return null;

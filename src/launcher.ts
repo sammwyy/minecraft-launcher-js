@@ -13,8 +13,8 @@ import {
 import {
   artifactToPath,
   createClasspathWithJar,
-  downloadFile,
-  downloadFileIfNotExist,
+  downloadFileWithRetries,
+  downloadFileIfNotExistWithRetries,
   getArch,
   getDefaultMcDir,
   getOS,
@@ -347,7 +347,7 @@ export class MinecraftLauncher extends Emitter {
       tasks.push(
         // eslint-disable-next-line no-async-promise-executor
         new Promise(async (resolve) => {
-          const data = await downloadFile(file.path, file.url);
+          const data = await downloadFileWithRetries(file.path, file.url);
           downloadedSize += data.size;
           downloadedFiles++;
 
@@ -431,7 +431,7 @@ export class MinecraftLauncher extends Emitter {
     const assetsUrl = manifest.assetIndex?.url;
     const assetId = manifest.assetIndex?.id || manifest.assets;
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
-    await downloadFileIfNotExist(indexes, assetsUrl);
+    await downloadFileIfNotExistWithRetries(indexes, assetsUrl);
 
     const indexRaw = await fs.readFile(indexes, { encoding: 'utf-8' });
     const index = JSON.parse(indexRaw);
@@ -461,7 +461,7 @@ export class MinecraftLauncher extends Emitter {
     const jarURL = manifest.downloads?.client?.url;
 
     if (jarFile && jarURL) {
-      await downloadFileIfNotExist(jarFile, jarURL);
+      await downloadFileIfNotExistWithRetries(jarFile, jarURL);
     }
   }
 

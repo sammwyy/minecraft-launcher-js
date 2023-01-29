@@ -17,17 +17,17 @@ test('API Query', async () => {
     },
   });
 
-  launcher.on('download_task_start', (event) => {
+  launcher.on('download_start', (event) => {
     console.log(
       `Starting download assets: ${event.files}, ${event.totalSize / 1024} KB`,
     );
   });
 
-  launcher.on('download_task_file', (event) => {
+  launcher.on('download_file', (event) => {
     console.log(`Downloading file: ${event.file} (${event.size / 1024} KB)`);
   });
 
-  launcher.on('download_task_progress', (event) => {
+  launcher.on('download_progress', (event) => {
     console.log(
       `Progress: ${event.progress}% | File ${event.progressFiles} of ${
         event.totalFiles
@@ -37,7 +37,7 @@ test('API Query', async () => {
     );
   });
 
-  launcher.on('download_task_end', (event) => {
+  launcher.on('download_end', (event) => {
     console.log(`Finished download: error=${event.error},task=${event.name}`);
   });
 

@@ -182,12 +182,16 @@ export function downloadFile(
 export async function downloadFileWithRetries(
   file: string,
   url: string,
-  retries = 3,
+  retries = 5,
 ): Promise<DownloadTaskFile> {
   let attemps = 0;
   let lastException: Error | null = null;
 
-  async function tryFetch(): Promise<DownloadTaskFile> {
+  async function tryFetch(isRetry: boolean): Promise<DownloadTaskFile> {
+    if (isRetry) {
+      await wait(1000);
+    }
+
     let data = await downloadFile(file, url).catch((e) => {
       lastException = e;
       return null;
@@ -197,7 +201,7 @@ export async function downloadFileWithRetries(
       attemps++;
 
       if (attemps < retries) {
-        data = await tryFetch();
+        data = await tryFetch(true);
       } else {
         throw lastException;
       }
@@ -206,7 +210,7 @@ export async function downloadFileWithRetries(
     return data;
   }
 
-  return await tryFetch();
+  return await tryFetch(false);
 }
 
 export async function downloadFileIfNotExist(
@@ -265,4 +269,10 @@ export function modernizeManifest(manifest: VersionManifest): VersionManifest {
   }
 
   return result;
+}
+
+export function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

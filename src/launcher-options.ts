@@ -48,8 +48,6 @@ export default interface LauncherOptions {
   brand?: LauncherBrand;
   customGameArgs?: string[];
   customJvmArgs?: string[];
-  delayBetweenDownload?: number;
-  downloadRetries?: number;
   env?: Record<string, string>;
   features?: LauncherFeatures;
   fixLog4JExploit?: boolean;
@@ -58,7 +56,6 @@ export default interface LauncherOptions {
   javaPath?: string;
   jsonFile?: string;
   libraryRoot?: string;
-  maxSockets?: number;
   memory: MemorySettings;
   nativesRoot?: string;
   os?: string;

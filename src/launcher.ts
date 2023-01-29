@@ -3,55 +3,19 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 
-import LauncherOptions from './launcher-options';
-import { LauncherError } from './launcher-error';
-import {
-  ManifestArgument,
-  ManifestRule,
-  VersionManifest,
-} from './version-manifest';
-import {
-  artifactToPath,
-  createClasspathWithJar,
-  downloadFileWithRetries,
-  downloadFileIfNotExistWithRetries,
-  getArch,
-  getDefaultMcDir,
-  getOS,
-  isWhatPercentOf,
-  mergeManifests,
-  modernizeManifest,
-  wait,
-} from './utils';
 import Emitter from './events/emitter';
+import LauncherOptions from './launcher-options';
+import { artifactToPath } from './utils/path-utils';
+import { getManifestFromSettings } from './utils/manifest-utils';
+import { downloadFile, downloadFileIfNotExist } from './utils/http-utils';
+import { validateAllRules } from './utils/rules-utils';
+import { formatArgs, validateArg } from './utils/args-utils';
+import { withDefaultOpts } from './utils/options-utils';
+import { Manifest } from './manifest';
 
-const DEFAULT_OPTIONS: LauncherOptions = {
-  authentication: {
-    name: 'Player',
-  },
-  brand: {
-    name: 'minecraft-launcher-js',
-    version: '0.0.1',
-  },
-  fixLog4JExploit: true,
-  javaPath: 'java',
-  memory: { max: 0, min: 0 },
-  maxSockets: 2,
-  urls: {
-    libraries: 'https://libraries.minecraft.net/',
-    meta: 'https://launchermeta.mojang.com',
-    resources: 'https://resources.download.minecraft.net',
-  },
-  version: {
-    number: '1.19.3',
-    type: 'release',
-  },
-  window: {
-    fullscreen: false,
-    height: 480,
-    width: 720,
-  },
-};
+function isWhatPercentOf(x: number, y: number) {
+  return (x / y) * 100;
+}
 
 export default interface DownloadEntry {
   hash: string;
@@ -62,219 +26,34 @@ export default interface DownloadEntry {
 }
 
 export class MinecraftLauncher extends Emitter {
-  private readonly options: LauncherOptions;
   private instance: child.ChildProcessWithoutNullStreams | null;
+  private manifest: Manifest | null;
+  private options: LauncherOptions;
 
   constructor(options: LauncherOptions) {
     super();
-
-    this.options = {
-      ...DEFAULT_OPTIONS,
-      ...options,
-    };
     this.instance = null;
+    this.manifest = null;
+    this.options = withDefaultOpts(options);
   }
 
   async prepare() {
-    // Prepare options.
-    if (!this.options.os) this.options.os = getOS();
-
-    // Prepare directories.
-    if (!this.options.gameRoot) {
-      this.options.gameRoot = getDefaultMcDir();
-    }
-
-    if (!this.options.assetsRoot) {
-      this.options.assetsRoot = path.join(this.options.gameRoot, 'assets');
-    }
-
-    if (!this.options.libraryRoot) {
-      this.options.libraryRoot = path.join(this.options.gameRoot, 'libraries');
-    }
-
-    if (!this.options.nativesRoot) {
-      this.options.nativesRoot = path.join(this.options.gameRoot, 'natives');
-    }
-
-    if (
-      !this.options.versionRoot &&
-      (!this.options.jsonFile || !this.options.jarFile)
-    ) {
-      this.options.versionRoot = path.join(this.options.gameRoot, 'versions');
-    }
-
-    // Prepare version files.
-    const { version, versionRoot } = this.options;
-
-    if (!this.options.jarFile && versionRoot) {
-      this.options.jarFile = path.join(
-        versionRoot,
-        version.number,
-        `${version.number}.jar`,
-      );
-    }
-
-    if (!this.options.jsonFile && versionRoot) {
-      this.options.jsonFile = path.join(
-        versionRoot,
-        version.number,
-        `${version.number}.json`,
-      );
-    }
-
     // Make directories if not exist.
-    await fs.mkdir(this.options.assetsRoot, { recursive: true });
-    await fs.mkdir(this.options.libraryRoot, { recursive: true });
-    await fs.mkdir(this.options.nativesRoot, { recursive: true });
+    await fs.mkdir(this.options.assetsRoot as string, { recursive: true });
+    await fs.mkdir(this.options.libraryRoot as string, { recursive: true });
+    await fs.mkdir(this.options.nativesRoot as string, { recursive: true });
     if (this.options.versionRoot) {
-      await fs.mkdir(this.options.versionRoot, { recursive: true });
+      const { versionRoot } = this.options;
+      await fs.mkdir(versionRoot as string, { recursive: true });
     }
   }
 
-  getInheritsManifest(inherits: string) {
-    const { jsonFile, versionRoot } = this.options;
-    const versions = versionRoot || path.join(jsonFile || '', '../..');
-    const parentFile = path.join(versions, inherits, `${inherits}.json`);
-
-    if (!fsSync.existsSync(parentFile)) {
-      throw new LauncherError(
-        'errors.no-inherit-json-file',
-        'No inherits version found.',
-      );
+  getManifest(): Manifest {
+    if (!this.manifest) {
+      this.manifest = getManifestFromSettings(this.options);
     }
 
-    const raw = fsSync.readFileSync(parentFile, { encoding: 'utf-8' });
-    const parentManifest = JSON.parse(raw) as VersionManifest;
-    return parentManifest;
-  }
-
-  getManifest(): VersionManifest {
-    if (!this.options.jsonFile) {
-      throw new LauncherError(
-        'errors.no-json-specified',
-        'No json file or versionRoot specified.',
-      );
-    }
-
-    const raw = fsSync.readFileSync(this.options.jsonFile, {
-      encoding: 'utf-8',
-    });
-    const manifest = modernizeManifest(JSON.parse(raw) as VersionManifest);
-
-    if (manifest.inheritsFrom) {
-      const parent = this.getInheritsManifest(manifest.inheritsFrom);
-      return mergeManifests(parent, manifest);
-    } else {
-      return manifest;
-    }
-  }
-
-  validateRule(rule: ManifestRule) {
-    const allow = rule.action === 'allow';
-    let valid = true;
-
-    if (rule.os) {
-      if (rule.os.name && rule.os.name !== this.options.os) {
-        valid = false;
-      }
-
-      if (rule.os.arch && rule.os.arch !== getArch()) {
-        valid = false;
-      }
-    }
-
-    if (rule.features?.is_demo_user !== this.options.features?.is_demo_user) {
-      valid = false;
-    }
-
-    if (
-      rule.features?.has_custom_resolution !==
-      this.options.features?.has_custom_resolution
-    ) {
-      valid = false;
-    }
-
-    if (allow && valid) return true;
-    if (!allow && !valid) return true;
-    if (!allow && valid) return false;
-    if (allow && !valid) return false;
-    return false;
-  }
-
-  validateAllRules(rules: ManifestRule[] | undefined) {
-    for (const rule of rules || []) {
-      if (!this.validateRule(rule)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  validateArg(arg: ManifestArgument): string[] {
-    if (typeof arg === 'string') {
-      return [arg];
-    } else {
-      const value = arg.value;
-
-      if (value) {
-        const valid = this.validateAllRules(arg.rules);
-
-        if (valid) {
-          if (typeof value === 'string') {
-            return [value];
-          } else {
-            return value;
-          }
-        }
-      }
-    }
-
-    return [];
-  }
-
-  private formatArgs(manifest: VersionManifest, args: string[]) {
-    const libs = manifest.libraries?.filter((lib) =>
-      this.validateAllRules(lib.rules),
-    );
-    const classpath = createClasspathWithJar(
-      this.options.libraryRoot as string,
-      libs || [],
-      this.options.jarFile as string,
-    );
-
-    const { options } = this;
-    const { authentication } = options;
-
-    return args.map((arg) =>
-      arg
-        .replace('${assets_root}', options.assetsRoot || 'null')
-        .replace('${game_directory}', options.gameRoot || 'null')
-        .replace('${natives_directory}', options.nativesRoot || 'null')
-
-        .replace('${launcher_name}', options.brand?.name || 'null')
-        .replace('${launcher_version}', options.brand?.version || 'null')
-
-        .replace('${auth_access_token}', authentication.accessToken || 'null')
-        .replace('${auth_player_name}', authentication.name)
-        .replace(
-          '${auth_uuid}',
-          authentication.uuid || 'a01e3843-e521-3998-958a-f459800e4d11',
-        )
-        .replace('${auth_xuid}', authentication.meta?.xuid || 'null')
-        .replace('${clientid}', authentication.meta?.clientId || 'null')
-        .replace('${user_type}', authentication.meta?.type || 'null')
-
-        .replace('${resolution_width}', options.window?.width + '')
-        .replace('${resolution_height}', options.window?.height + '')
-
-        .replace('${version_type}', options.version.type || 'null')
-        .replace('${version_name}', options.version.number || 'null')
-
-        .replace('${assets_index_name}', manifest.assetIndex?.id || 'null')
-        .replace('${user_properties}', '{}')
-        .replace('${classpath}', classpath),
-    );
+    return this.manifest;
   }
 
   createCommand() {
@@ -297,16 +76,16 @@ export class MinecraftLauncher extends Emitter {
     }
 
     for (const javaArg of manifest.arguments?.jvm || []) {
-      args.push(...this.validateArg(javaArg));
+      args.push(...validateArg(this.options, javaArg));
     }
 
     args.push(manifest.mainClass);
 
     for (const gameArg of manifest.arguments?.game || []) {
-      args.push(...this.validateArg(gameArg));
+      args.push(...validateArg(this.options, gameArg));
     }
 
-    return this.formatArgs(manifest, args);
+    return formatArgs(this.options, manifest, args);
   }
 
   async startDownloadTask(taskName: string, pendingFiles: DownloadEntry[]) {
@@ -335,29 +114,22 @@ export class MinecraftLauncher extends Emitter {
     });
 
     const tasks = [];
-    let delay = 0;
 
     for (const file of files) {
-      delay += this.options.delayBetweenDownload || 10;
-
-      this.emit('download_file', {
-        file: file.name,
-        path: file.path,
-        sha1: file.hash,
-        size: file.size,
-        task: taskName,
-      });
-
       tasks.push(
         // eslint-disable-next-line no-async-promise-executor
         new Promise(async (resolve) => {
-          await wait(delay);
-          const data = await downloadFileWithRetries(
-            file.path,
-            file.url,
-            this.options.downloadRetries,
-          );
-          downloadedSize += data.size;
+          await downloadFile(file.path, file.url, () => {
+            this.emit('download_file', {
+              file: file.name,
+              path: file.path,
+              sha1: file.hash,
+              size: file.size,
+              task: taskName,
+            });
+          });
+
+          downloadedSize += file.size;
           downloadedFiles++;
 
           this.emit('download_progress', {
@@ -374,16 +146,11 @@ export class MinecraftLauncher extends Emitter {
       );
     }
 
-    const res = await Promise.all(tasks).catch((e) => {
-      this.emit('download_end', { name: taskName, error: e + '' });
-      return null;
-    });
-    if (res) {
-      this.emit('download_end', { name: taskName });
-    }
+    await Promise.all(tasks);
+    this.emit('download_end', { name: taskName });
   }
 
-  isLibrariesDownloaded(manifest: VersionManifest) {
+  isLibrariesDownloaded(manifest: Manifest) {
     const librariesRoot = this.options.libraryRoot as string;
 
     for (const lib of manifest.libraries || []) {
@@ -392,8 +159,9 @@ export class MinecraftLauncher extends Emitter {
       if (artifact) {
         const file = artifact.path || artifactToPath(artifact.id || lib.name);
         const filePath = path.join(librariesRoot, file);
+        const rulesValid = validateAllRules(this.options, lib.rules);
 
-        if (this.validateAllRules(lib.rules) && !fsSync.existsSync(filePath)) {
+        if (rulesValid && !fsSync.existsSync(filePath)) {
           return false;
         }
       }
@@ -402,7 +170,7 @@ export class MinecraftLauncher extends Emitter {
     return true;
   }
 
-  isAssetsDownloaded(manifest: VersionManifest) {
+  isAssetsDownloaded(manifest: Manifest) {
     const assetRoot = this.options.assetsRoot as string;
     const assetId = manifest.assetIndex?.id || manifest.assets;
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
@@ -435,16 +203,12 @@ export class MinecraftLauncher extends Emitter {
     );
   }
 
-  async downloadAssets(manifest: VersionManifest) {
+  async downloadAssets(manifest: Manifest) {
     const assetRoot = this.options.assetsRoot as string;
     const assetsUrl = manifest.assetIndex?.url;
     const assetId = manifest.assetIndex?.id || manifest.assets;
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
-    await downloadFileIfNotExistWithRetries(
-      indexes,
-      assetsUrl,
-      this.options.downloadRetries,
-    );
+    await downloadFileIfNotExist(indexes, assetsUrl);
 
     const indexRaw = await fs.readFile(indexes, { encoding: 'utf-8' });
     const index = JSON.parse(indexRaw);
@@ -469,20 +233,16 @@ export class MinecraftLauncher extends Emitter {
     await this.startDownloadTask('assets', download_queue);
   }
 
-  async downloadJarFile(manifest: VersionManifest) {
+  async downloadJarFile(manifest: Manifest) {
     const jarFile = this.options.jarFile;
     const jarURL = manifest.downloads?.client?.url;
 
     if (jarFile && jarURL) {
-      await downloadFileIfNotExistWithRetries(
-        jarFile,
-        jarURL,
-        this.options.downloadRetries,
-      );
+      await downloadFileIfNotExist(jarFile, jarURL);
     }
   }
 
-  async downloadLibraries(manifest: VersionManifest) {
+  async downloadLibraries(manifest: Manifest) {
     const librariesRoot = this.options.libraryRoot as string;
     const download_queue: DownloadEntry[] = [];
 

@@ -38,7 +38,7 @@ export interface ManifestLibrary {
 
 export type ManifestType = 'snapshot' | 'release' | 'old_alpha' | 'old_beta';
 
-export interface VersionManifest {
+export interface Manifest {
   arguments?: {
     game?: ManifestArgument[];
     jvm?: ManifestArgument[];

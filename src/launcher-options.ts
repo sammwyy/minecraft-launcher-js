@@ -48,6 +48,8 @@ export default interface LauncherOptions {
   brand?: LauncherBrand;
   customGameArgs?: string[];
   customJvmArgs?: string[];
+  delayBetweenDownload?: number;
+  downloadRetries?: number;
   env?: Record<string, string>;
   features?: LauncherFeatures;
   fixLog4JExploit?: boolean;

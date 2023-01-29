@@ -21,6 +21,7 @@ import {
   isWhatPercentOf,
   mergeManifests,
   modernizeManifest,
+  wait,
 } from './utils';
 import Emitter from './events/emitter';
 
@@ -334,8 +335,11 @@ export class MinecraftLauncher extends Emitter {
     });
 
     const tasks = [];
+    let delay = 0;
 
     for (const file of files) {
+      delay += this.options.delayBetweenDownload || 10;
+
       this.emit('download_file', {
         file: file.name,
         path: file.path,
@@ -347,7 +351,12 @@ export class MinecraftLauncher extends Emitter {
       tasks.push(
         // eslint-disable-next-line no-async-promise-executor
         new Promise(async (resolve) => {
-          const data = await downloadFileWithRetries(file.path, file.url);
+          await wait(delay);
+          const data = await downloadFileWithRetries(
+            file.path,
+            file.url,
+            this.options.downloadRetries,
+          );
           downloadedSize += data.size;
           downloadedFiles++;
 
@@ -431,7 +440,11 @@ export class MinecraftLauncher extends Emitter {
     const assetsUrl = manifest.assetIndex?.url;
     const assetId = manifest.assetIndex?.id || manifest.assets;
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
-    await downloadFileIfNotExistWithRetries(indexes, assetsUrl);
+    await downloadFileIfNotExistWithRetries(
+      indexes,
+      assetsUrl,
+      this.options.downloadRetries,
+    );
 
     const indexRaw = await fs.readFile(indexes, { encoding: 'utf-8' });
     const index = JSON.parse(indexRaw);
@@ -461,7 +474,11 @@ export class MinecraftLauncher extends Emitter {
     const jarURL = manifest.downloads?.client?.url;
 
     if (jarFile && jarURL) {
-      await downloadFileIfNotExistWithRetries(jarFile, jarURL);
+      await downloadFileIfNotExistWithRetries(
+        jarFile,
+        jarURL,
+        this.options.downloadRetries,
+      );
     }
   }
 

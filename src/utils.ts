@@ -226,7 +226,7 @@ export async function downloadFileIfNotExistWithRetries(
   retries = 3,
 ): Promise<DownloadTaskFile | null> {
   if (url && !fsSync.existsSync(file)) {
-    return await downloadFileIfNotExistWithRetries(file, url, retries);
+    return await downloadFileWithRetries(file, url, retries);
   }
 
   return null;

@@ -1,0 +1,37 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+docs
+
+# dotfiles
+.DS_Store
+.babelrc
+.eslintrc.json
+.husky
+
+# Dependencies
+node_modules
+
+# Intermediate files
+.tmp
+types.js
+
+# Secrets
+.env
+
+# Sources
+*.md
+*.txt
+src
+test
+script
+fixtures
+examples
+rollup.config.js
+.travis.yml
+schema.json
+secrets.ejson
+service.yml
+shipit.yml
+yarn.lock

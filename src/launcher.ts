@@ -374,6 +374,58 @@ export class MinecraftLauncher extends Emitter {
     }
   }
 
+  isLibrariesDownloaded(manifest: VersionManifest) {
+    const librariesRoot = this.options.libraryRoot as string;
+
+    for (const lib of manifest.libraries || []) {
+      const artifact = lib.downloads?.artifact;
+
+      if (artifact) {
+        const file = artifact.path || artifactToPath(artifact.id || lib.name);
+        const filePath = path.join(librariesRoot, file);
+
+        if (this.validateAllRules(lib.rules) && !fsSync.existsSync(filePath)) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  isAssetsDownloaded(manifest: VersionManifest) {
+    const assetRoot = this.options.assetsRoot as string;
+    const assetId = manifest.assetIndex?.id || manifest.assets;
+    const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
+
+    if (!fsSync.existsSync(indexes)) {
+      return false;
+    }
+
+    const indexRaw = fsSync.readFileSync(indexes, { encoding: 'utf-8' });
+    const index = JSON.parse(indexRaw);
+
+    for (const fileName in index.objects) {
+      const file = index.objects[fileName];
+      const hash = file.hash;
+      const subHash = hash.substring(0, 2);
+      const subAsset = path.join(assetRoot, 'objects', subHash, hash);
+
+      if (!fsSync.existsSync(subAsset)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  isDownloaded() {
+    const manifest = this.getManifest();
+    return (
+      this.isAssetsDownloaded(manifest) && this.isLibrariesDownloaded(manifest)
+    );
+  }
+
   async downloadAssets(manifest: VersionManifest) {
     const assetRoot = this.options.assetsRoot as string;
     const assetsUrl = manifest.assetIndex?.url;

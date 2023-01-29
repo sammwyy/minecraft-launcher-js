@@ -2,7 +2,7 @@ import { MinecraftLauncher } from '../src';
 
 jest.setTimeout(5 * 60 * 1000);
 
-test('API Query', async () => {
+test('Launch from .minecraft', async () => {
   const launcher = new MinecraftLauncher({
     authentication: {
       name: 'Player',
@@ -17,6 +17,7 @@ test('API Query', async () => {
     },
   });
 
+  /*
   launcher.on('download_start', (event) => {
     console.log(
       `Starting download assets: ${event.files}, ${event.totalSize / 1024} KB`,
@@ -40,10 +41,11 @@ test('API Query', async () => {
   launcher.on('download_end', (event) => {
     console.log(`Finished download: error=${event.error},task=${event.name}`);
   });
+  */
 
   await launcher.prepare();
   await launcher.download();
   await launcher.start();
 
-  expect(true).toBe(true);
+  expect(launcher.kill()).toBe(true);
 });

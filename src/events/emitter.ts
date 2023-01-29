@@ -12,8 +12,8 @@ export type EventType = {
   download_start: (event: DownloadTaskStart) => void;
   download_progress: (event: DownloadTaskProgress) => void;
   stop: (stopCode: number) => void;
-  stderr: (message: number) => void;
-  stdout: (message: number) => void;
+  stderr: (message: string) => void;
+  stdout: (message: string) => void;
 };
 
 class Emitter extends (EventEmitter as new () => TypedEmitter<EventType>) {

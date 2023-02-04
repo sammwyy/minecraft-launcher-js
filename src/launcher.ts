@@ -1,16 +1,22 @@
 import * as child from 'child_process';
+import fetch from 'node-fetch';
 import fs from 'graceful-fs';
 import path from 'path';
 
 import Emitter from './events/emitter';
 import LauncherOptions from './launcher-options';
 import { artifactToPath } from './utils/path-utils';
-import { getManifestFromSettings } from './utils/manifest-utils';
+import {
+  findRemoteVersionInManifest,
+  getManifestFromSettings,
+} from './utils/manifest-utils';
 import { downloadFile, downloadFileIfNotExist } from './utils/http-utils';
 import { validateAllRules } from './utils/rules-utils';
 import { formatArgs, validateArg } from './utils/args-utils';
 import { withDefaultOpts } from './utils/options-utils';
 import { Manifest } from './manifest';
+import { LauncherError } from './launcher-error';
+import { RemoteVersionManifest } from './remote_version_manifest';
 
 function isWhatPercentOf(x: number, y: number) {
   return (x / y) * 100;
@@ -47,7 +53,7 @@ export class MinecraftLauncher extends Emitter {
     }
   }
 
-  getManifest(): Manifest {
+  getManifest(): Manifest | null {
     if (!this.manifest) {
       this.manifest = getManifestFromSettings(this.options);
     }
@@ -57,6 +63,13 @@ export class MinecraftLauncher extends Emitter {
 
   createCommand() {
     const manifest = this.getManifest();
+    if (!manifest) {
+      throw new LauncherError(
+        'errors.manifest-not-downloaded-yet',
+        "Manifest file isn't downloaded yet.",
+      );
+    }
+
     const args = [];
 
     args.push('-XX:-UseAdaptiveSizePolicy');
@@ -194,10 +207,22 @@ export class MinecraftLauncher extends Emitter {
     return true;
   }
 
+  isManifestDownloaded() {
+    if (!this.options.jsonFile) {
+      throw new LauncherError(
+        'errors.no-json-specified',
+        'No json file or versionRoot specified.',
+      );
+    }
+    return fs.existsSync(this.options.jsonFile);
+  }
+
   isDownloaded() {
     const manifest = this.getManifest();
     return (
-      this.isAssetsDownloaded(manifest) && this.isLibrariesDownloaded(manifest)
+      manifest &&
+      this.isAssetsDownloaded(manifest) &&
+      this.isLibrariesDownloaded(manifest)
     );
   }
 
@@ -264,11 +289,44 @@ export class MinecraftLauncher extends Emitter {
     await this.startDownloadTask('libraries', download_queue);
   }
 
+  async getRemoteVersionManifest(): Promise<RemoteVersionManifest> {
+    const root = this.options.urls?.meta || 'http://';
+    const resource = path.join(root, 'mc/game/version_manifest.json');
+
+    const req = await fetch(resource);
+    const remote = (await req.json()) as RemoteVersionManifest;
+    return remote;
+  }
+
+  async downloadManifest(id = this.options.version.number) {
+    const remotes = await this.getRemoteVersionManifest();
+    const version = findRemoteVersionInManifest(id, remotes);
+    if (!this.options.jsonFile) {
+      throw new LauncherError(
+        'errors.no-json-specified',
+        'No json file or versionRoot specified.',
+      );
+    } else if (!version) {
+      throw new LauncherError(
+        'errors.remote-version-not-found',
+        'Version with id ' + id + " doesn't exist.",
+      );
+    } else {
+      await downloadFile(this.options.jsonFile, version.url);
+    }
+  }
+
   async download() {
+    if (!this.isManifestDownloaded()) {
+      await this.downloadManifest();
+    }
+
     const manifest = this.getManifest();
-    await this.downloadAssets(manifest);
-    await this.downloadJarFile(manifest);
-    await this.downloadLibraries(manifest);
+    if (manifest) {
+      await this.downloadAssets(manifest);
+      await this.downloadJarFile(manifest);
+      await this.downloadLibraries(manifest);
+    }
   }
 
   start(): Promise<number> {

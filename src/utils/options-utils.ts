@@ -15,7 +15,7 @@ const DEF_OPTS: LauncherOptions = {
   javaPath: 'java',
   memory: { max: 0, min: 0 },
   urls: {
-    libraries: 'https://libraries.minecraft.net/',
+    libraries: 'https://libraries.minecraft.net',
     meta: 'https://launchermeta.mojang.com',
     resources: 'https://resources.download.minecraft.net',
   },

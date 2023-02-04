@@ -15,7 +15,7 @@ test('Launch from .minecraft', async () => {
     },
   });
 
-  await launcher.prepare();
+  launcher.prepare();
   await launcher.start();
   expect(launcher.kill()).toBe(true);
 });

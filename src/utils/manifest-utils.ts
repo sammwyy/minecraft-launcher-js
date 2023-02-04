@@ -3,6 +3,10 @@ import path from 'path';
 import { LauncherError } from '../launcher-error';
 import LauncherOptions from '../launcher-options';
 import { ManifestArgument, ManifestLibrary, Manifest } from '../manifest';
+import {
+  RemoteVersion,
+  RemoteVersionManifest,
+} from '../remote_version_manifest';
 
 function mergeArrays(
   arr1: unknown[] | undefined,
@@ -103,7 +107,9 @@ export function getInheritsManifest(
   return parentManifest;
 }
 
-export function getManifestFromSettings(options: LauncherOptions): Manifest {
+export function getManifestFromSettings(
+  options: LauncherOptions,
+): Manifest | null {
   const { jsonFile } = options;
 
   if (!jsonFile) {
@@ -111,6 +117,10 @@ export function getManifestFromSettings(options: LauncherOptions): Manifest {
       'errors.no-json-specified',
       'No json file or versionRoot specified.',
     );
+  }
+
+  if (!fs.existsSync(jsonFile)) {
+    return null;
   }
 
   const raw = fs.readFileSync(jsonFile, { encoding: 'utf-8' });
@@ -122,4 +132,17 @@ export function getManifestFromSettings(options: LauncherOptions): Manifest {
   }
 
   return manifest;
+}
+
+export function findRemoteVersionInManifest(
+  id: string,
+  manifest: RemoteVersionManifest,
+): RemoteVersion | null {
+  for (const version of manifest.versions) {
+    if (version.id === id) {
+      return version;
+    }
+  }
+
+  return null;
 }

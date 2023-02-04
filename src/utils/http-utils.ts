@@ -1,6 +1,5 @@
 import fetch, { RequestInfo, RequestInit, Response } from 'node-fetch';
-import fs from 'fs/promises';
-import fsSync from 'fs';
+import fs from 'graceful-fs';
 import path from 'path';
 
 // Fetching
@@ -32,33 +31,20 @@ export const retryFetch = (
 };
 
 // Download
-export function downloadFile(
-  file: string,
-  url: string,
-  onStartDownload?: () => void | null,
-): Promise<void> {
-  // eslint-disable-next-line no-async-promise-executor
-  return new Promise(async (resolve, reject) => {
-    const dir = path.join(file, '..');
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(file, '');
-
-    if (onStartDownload) onStartDownload();
-
-    const res = await retryFetch(url);
-    const fileStream = fsSync.createWriteStream(file);
-    res.body.pipe(fileStream);
-    res.body.on('error', reject);
-    fileStream.on('error', reject);
-    fileStream.on('finish', resolve);
-  });
+export async function downloadFile(file: string, url: string): Promise<void> {
+  const dir = path.join(file, '..');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, '');
+  const res = await retryFetch(url);
+  const buffer = await res.buffer();
+  fs.writeFileSync(file, buffer);
 }
 
 export async function downloadFileIfNotExist(
   file: string,
   url: string | undefined,
 ): Promise<boolean> {
-  if (url && !fsSync.existsSync(file)) {
+  if (url && !fs.existsSync(file)) {
     await downloadFile(file, url);
     return true;
   }

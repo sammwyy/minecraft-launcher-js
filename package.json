@@ -31,6 +31,7 @@
   "module": "lib/index.esm.js",
   "dependencies": {
     "checksum": "^1.0.0",
+    "graceful-fs": "^4.2.10",
     "md5": "^2.3.0",
     "node-fetch": "^2.6.7",
     "typed-emitter": "^2.1.0",

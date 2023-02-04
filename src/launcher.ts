@@ -1,6 +1,5 @@
 import * as child from 'child_process';
-import fs from 'fs/promises';
-import fsSync from 'fs';
+import fs from 'graceful-fs';
 import path from 'path';
 
 import Emitter from './events/emitter';
@@ -37,14 +36,14 @@ export class MinecraftLauncher extends Emitter {
     this.options = withDefaultOpts(options);
   }
 
-  async prepare() {
+  prepare() {
     // Make directories if not exist.
-    await fs.mkdir(this.options.assetsRoot as string, { recursive: true });
-    await fs.mkdir(this.options.libraryRoot as string, { recursive: true });
-    await fs.mkdir(this.options.nativesRoot as string, { recursive: true });
+    fs.mkdirSync(this.options.assetsRoot as string, { recursive: true });
+    fs.mkdirSync(this.options.libraryRoot as string, { recursive: true });
+    fs.mkdirSync(this.options.nativesRoot as string, { recursive: true });
     if (this.options.versionRoot) {
       const { versionRoot } = this.options;
-      await fs.mkdir(versionRoot as string, { recursive: true });
+      fs.mkdirSync(versionRoot as string, { recursive: true });
     }
   }
 
@@ -94,11 +93,11 @@ export class MinecraftLauncher extends Emitter {
     let downloadedFiles = 0;
 
     const files = pendingFiles.filter((f) => {
-      if (!fsSync.existsSync(f.path)) {
+      if (!fs.existsSync(f.path)) {
         totalSize += f.size;
         return true;
       } else {
-        const stat = fsSync.statSync(f.path);
+        const stat = fs.statSync(f.path);
         if (stat.size == 0) {
           totalSize += f.size;
           return true;
@@ -114,34 +113,33 @@ export class MinecraftLauncher extends Emitter {
     });
 
     const tasks = [];
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const launcher = this;
 
     for (const file of files) {
       tasks.push(
         // eslint-disable-next-line no-async-promise-executor
         new Promise(async (resolve) => {
-          await downloadFile(file.path, file.url, () => {
-            this.emit('download_file', {
-              file: file.name,
-              path: file.path,
-              sha1: file.hash,
-              size: file.size,
+          async function task() {
+            await downloadFile(file.path, file.url);
+
+            downloadedSize += file.size;
+            downloadedFiles++;
+
+            launcher.emit('download_progress', {
+              lastFile: file.name,
+              progress: isWhatPercentOf(downloadedSize, totalSize),
+              progressFiles: downloadedFiles,
+              progressSize: downloadedSize,
+              totalFiles: files.length,
+              totalSize: totalSize,
               task: taskName,
             });
-          });
 
-          downloadedSize += file.size;
-          downloadedFiles++;
+            resolve(null);
+          }
 
-          this.emit('download_progress', {
-            progress: isWhatPercentOf(downloadedSize, totalSize),
-            progressFiles: downloadedFiles,
-            progressSize: downloadedSize,
-            totalFiles: files.length,
-            totalSize: totalSize,
-            task: taskName,
-          });
-
-          resolve(null);
+          task();
         }),
       );
     }
@@ -161,7 +159,7 @@ export class MinecraftLauncher extends Emitter {
         const filePath = path.join(librariesRoot, file);
         const rulesValid = validateAllRules(this.options, lib.rules);
 
-        if (rulesValid && !fsSync.existsSync(filePath)) {
+        if (rulesValid && !fs.existsSync(filePath)) {
           return false;
         }
       }
@@ -175,11 +173,11 @@ export class MinecraftLauncher extends Emitter {
     const assetId = manifest.assetIndex?.id || manifest.assets;
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
 
-    if (!fsSync.existsSync(indexes)) {
+    if (!fs.existsSync(indexes)) {
       return false;
     }
 
-    const indexRaw = fsSync.readFileSync(indexes, { encoding: 'utf-8' });
+    const indexRaw = fs.readFileSync(indexes, { encoding: 'utf-8' });
     const index = JSON.parse(indexRaw);
 
     for (const fileName in index.objects) {
@@ -188,7 +186,7 @@ export class MinecraftLauncher extends Emitter {
       const subHash = hash.substring(0, 2);
       const subAsset = path.join(assetRoot, 'objects', subHash, hash);
 
-      if (!fsSync.existsSync(subAsset)) {
+      if (!fs.existsSync(subAsset)) {
         return false;
       }
     }
@@ -210,7 +208,7 @@ export class MinecraftLauncher extends Emitter {
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
     await downloadFileIfNotExist(indexes, assetsUrl);
 
-    const indexRaw = await fs.readFile(indexes, { encoding: 'utf-8' });
+    const indexRaw = fs.readFileSync(indexes, { encoding: 'utf-8' });
     const index = JSON.parse(indexRaw);
     const download_queue: DownloadEntry[] = [];
 

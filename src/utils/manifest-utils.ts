@@ -1,4 +1,4 @@
-import fsSync from 'fs';
+import fs from 'graceful-fs';
 import path from 'path';
 import { LauncherError } from '../launcher-error';
 import LauncherOptions from '../launcher-options';
@@ -91,14 +91,14 @@ export function getInheritsManifest(
   const versions = versionRoot || path.join(jsonFile || '', '../..');
   const parentFile = path.join(versions, inherits, `${inherits}.json`);
 
-  if (!fsSync.existsSync(parentFile)) {
+  if (!fs.existsSync(parentFile)) {
     throw new LauncherError(
       'errors.no-inherit-json-file',
       'No inherits version found.',
     );
   }
 
-  const raw = fsSync.readFileSync(parentFile, { encoding: 'utf-8' });
+  const raw = fs.readFileSync(parentFile, { encoding: 'utf-8' });
   const parentManifest = JSON.parse(raw) as Manifest;
   return parentManifest;
 }
@@ -113,7 +113,7 @@ export function getManifestFromSettings(options: LauncherOptions): Manifest {
     );
   }
 
-  const raw = fsSync.readFileSync(jsonFile, { encoding: 'utf-8' });
+  const raw = fs.readFileSync(jsonFile, { encoding: 'utf-8' });
   let manifest = modernizeManifest(JSON.parse(raw) as Manifest);
 
   if (manifest.inheritsFrom) {

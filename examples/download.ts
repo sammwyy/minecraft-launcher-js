@@ -21,10 +21,6 @@ async function main() {
     );
   });
 
-  launcher.on('download_file', (event) => {
-    console.log(`Downloading file: ${event.file} (${event.size / 1024} KB)`);
-  });
-
   launcher.on('download_progress', (event) => {
     console.log(
       `Progress: ${event.progress}% | File ${event.progressFiles} of ${
@@ -39,7 +35,7 @@ async function main() {
     console.log(`Finished download: error=${event.error},task=${event.name}`);
   });
 
-  await launcher.prepare();
+  launcher.prepare();
   await launcher.download();
   await launcher.start();
 }

@@ -1,4 +1,5 @@
 export interface DownloadTaskProgress {
+  lastFile?: string;
   progress: number;
   progressFiles: number;
   progressSize: number;

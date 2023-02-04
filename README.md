@@ -24,7 +24,7 @@ const launcher = new MinecraftLauncher({
 
 async function main() {
     // Prepare directories.
-    await launcher.prepare();
+    launcher.prepare();
 
     // Download if any file is missing.
     await launcher.download();

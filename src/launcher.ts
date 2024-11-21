@@ -1,22 +1,21 @@
 import * as child from 'child_process';
-import fetch from 'node-fetch';
-import fs from 'graceful-fs';
+import fs from 'node:fs/promises';
 import path from 'path';
 
 import Emitter from './events/emitter';
+import { LauncherError } from './launcher-error';
 import LauncherOptions from './launcher-options';
-import { artifactToPath } from './utils/path-utils';
+import { Manifest } from './manifest';
+import { RemoteVersionManifest } from './remote_version_manifest';
+import { formatArgs, validateArg } from './utils/args-utils';
+import { downloadFile, downloadFileIfNotExist } from './utils/http-utils';
 import {
   findRemoteVersionInManifest,
   getManifestFromSettings,
 } from './utils/manifest-utils';
-import { downloadFile, downloadFileIfNotExist } from './utils/http-utils';
-import { validateAllRules } from './utils/rules-utils';
-import { formatArgs, validateArg } from './utils/args-utils';
 import { withDefaultOpts } from './utils/options-utils';
-import { Manifest } from './manifest';
-import { LauncherError } from './launcher-error';
-import { RemoteVersionManifest } from './remote_version_manifest';
+import { artifactToPath } from './utils/path-utils';
+import { validateAllRules } from './utils/rules-utils';
 
 function isWhatPercentOf(x: number, y: number) {
   return (x / y) * 100;
@@ -42,14 +41,14 @@ export class MinecraftLauncher extends Emitter {
     this.options = withDefaultOpts(options);
   }
 
-  prepare() {
+  async prepare() {
     // Make directories if not exist.
-    fs.mkdirSync(this.options.assetsRoot as string, { recursive: true });
-    fs.mkdirSync(this.options.libraryRoot as string, { recursive: true });
-    fs.mkdirSync(this.options.nativesRoot as string, { recursive: true });
+    await fs.mkdir(this.options.assetsRoot as string, { recursive: true });
+    await fs.mkdir(this.options.libraryRoot as string, { recursive: true });
+    await fs.mkdir(this.options.nativesRoot as string, { recursive: true });
     if (this.options.versionRoot) {
       const { versionRoot } = this.options;
-      fs.mkdirSync(versionRoot as string, { recursive: true });
+      await fs.mkdir(versionRoot as string, { recursive: true });
     }
   }
 
@@ -105,12 +104,12 @@ export class MinecraftLauncher extends Emitter {
     let downloadedSize = 0;
     let downloadedFiles = 0;
 
-    const files = pendingFiles.filter((f) => {
-      if (!fs.existsSync(f.path)) {
+    const files = pendingFiles.filter(async (f) => {
+      if (!fs.access(f.path)) {
         totalSize += f.size;
         return true;
       } else {
-        const stat = fs.statSync(f.path);
+        const stat = await fs.stat(f.path);
         if (stat.size == 0) {
           totalSize += f.size;
           return true;
@@ -172,7 +171,7 @@ export class MinecraftLauncher extends Emitter {
         const filePath = path.join(librariesRoot, file);
         const rulesValid = validateAllRules(this.options, lib.rules);
 
-        if (rulesValid && !fs.existsSync(filePath)) {
+        if (rulesValid && !fs.access(filePath)) {
           return false;
         }
       }
@@ -181,16 +180,16 @@ export class MinecraftLauncher extends Emitter {
     return true;
   }
 
-  isAssetsDownloaded(manifest: Manifest) {
+  async isAssetsDownloaded(manifest: Manifest) {
     const assetRoot = this.options.assetsRoot as string;
     const assetId = manifest.assetIndex?.id || manifest.assets;
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
 
-    if (!fs.existsSync(indexes)) {
+    if (!fs.access(indexes)) {
       return false;
     }
 
-    const indexRaw = fs.readFileSync(indexes, { encoding: 'utf-8' });
+    const indexRaw = await fs.readFile(indexes, { encoding: 'utf-8' });
     const index = JSON.parse(indexRaw);
 
     for (const fileName in index.objects) {
@@ -199,7 +198,7 @@ export class MinecraftLauncher extends Emitter {
       const subHash = hash.substring(0, 2);
       const subAsset = path.join(assetRoot, 'objects', subHash, hash);
 
-      if (!fs.existsSync(subAsset)) {
+      if (!fs.access(subAsset)) {
         return false;
       }
     }
@@ -214,14 +213,14 @@ export class MinecraftLauncher extends Emitter {
         'No json file or versionRoot specified.',
       );
     }
-    return fs.existsSync(this.options.jsonFile);
+    return fs.access(this.options.jsonFile);
   }
 
-  isDownloaded() {
+  async isDownloaded() {
     const manifest = this.getManifest();
     return (
       manifest &&
-      this.isAssetsDownloaded(manifest) &&
+      await this.isAssetsDownloaded(manifest) &&
       this.isLibrariesDownloaded(manifest)
     );
   }
@@ -233,7 +232,7 @@ export class MinecraftLauncher extends Emitter {
     const indexes = path.join(assetRoot, 'indexes', `${assetId}.json`);
     await downloadFileIfNotExist(indexes, assetsUrl);
 
-    const indexRaw = fs.readFileSync(indexes, { encoding: 'utf-8' });
+    const indexRaw = await fs.readFile(indexes, { encoding: 'utf-8' });
     const index = JSON.parse(indexRaw);
     const download_queue: DownloadEntry[] = [];
 

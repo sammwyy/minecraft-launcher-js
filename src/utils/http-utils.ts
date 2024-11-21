@@ -1,10 +1,7 @@
-import fetch, { RequestInfo, RequestInit, Response } from 'node-fetch';
-import fs from 'graceful-fs';
+import fs from 'node:fs/promises';
 import path from 'path';
+import { setTimeout as delay } from 'timers/promises';
 
-// Fetching
-const delay = (ms: number) =>
-  new Promise((resolve) => setTimeout(() => resolve(null), ms));
 
 export const retryFetch = (
   url: RequestInfo,
@@ -33,18 +30,18 @@ export const retryFetch = (
 // Download
 export async function downloadFile(file: string, url: string): Promise<void> {
   const dir = path.join(file, '..');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file, '');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(file, '');
   const res = await retryFetch(url);
-  const buffer = await res.buffer();
-  fs.writeFileSync(file, buffer);
+  const buffer = await res.arrayBuffer();
+  await fs.writeFile(file, Buffer.from(buffer));
 }
 
 export async function downloadFileIfNotExist(
   file: string,
   url: string | undefined,
 ): Promise<boolean> {
-  if (url && !fs.existsSync(file)) {
+  if (url && !fs.access(file)) {
     await downloadFile(file, url);
     return true;
   }

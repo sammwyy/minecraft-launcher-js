@@ -16,5 +16,5 @@ test('Installation check', async () => {
   });
 
   await launcher.prepare();
-  expect(launcher.isDownloaded()).toBeDefined();
+  expect(await launcher.isDownloaded()).toBeDefined();
 });
